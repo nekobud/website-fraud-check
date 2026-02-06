@@ -155,58 +155,58 @@ class WebsiteFraudChecker {
             const result = execSync(`whois "${rootDomain}"`, { encoding: 'utf8', timeout: 10000 });
             
             // Look for creation/registration date patterns in the whois output
+            // NOTE: Order matters! More specific patterns should come before general ones
             const datePatterns = [
-                /created[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /creation date[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /created on[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /create date[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /register date[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /registrar registration[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /Registration Date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Additional pattern for .ai domains
-                /Domain Registration Date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Another common pattern
-                /Created on[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Another variation
+                /Creation Date[^\d]*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/i,  // ISO format with timestamp (T and Z) - specific first
+                /Updated Date[^\d]*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/i,  // ISO format with timestamp (T and Z) - specific first
+                /Registry Expiry Date[^\d]*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/i,  // ISO format with timestamp (T and Z) - specific first
+                /created[^\d]*(\d{4}-\d{2}-\d{2})/i,  // General pattern - less specific
+                /creation date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // General pattern - less specific
+                /created on[^\d]*(\d{4}-\d{2}-\d{2})/i,  // General pattern - less specific
+                /create date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // General pattern - less specific
+                /register date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // General pattern - less specific
+                /registrar registration[^\d]*(\d{4}-\d{2}-\d{2})/i,  // General pattern - less specific
+                /Registration Date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Additional pattern for .ai domains - less specific
+                /Domain Registration Date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Another common pattern - less specific
+                /Created on[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Another variation - less specific
                 /Domain Name Commencement Date[^\d]*(\d{2}-\d{2}-\d{4})/i,  // .hk domain format (DD-MM-YYYY)
-                /Creation Date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Alternative format
-                /Creation date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Lowercase variant
-                /registrant created[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Some registries use this format
-                /created-date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Hyphenated format
-                /Registered on[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Capitalized variant
-                /Record created on[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Extended format
-                /Registration Time[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Alternative term
-                /Domain created[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Different phrasing
-                /Domain registered[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Different phrasing
+                /Creation Date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Alternative format - less specific
+                /Creation date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Lowercase variant - less specific
+                /registrant created[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Some registries use this format - less specific
+                /created-date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Hyphenated format - less specific
+                /Registered on[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Capitalized variant - less specific
+                /Record created on[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Extended format - less specific
+                /Registration Time[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Alternative term - less specific
+                /Domain created[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Different phrasing - less specific
+                /Domain registered[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Different phrasing - less specific
                 /Fecha de registro[^\d]*(\d{2}\/\d{2}\/\d{4})/i,  // Spanish format (DD/MM/YYYY)
                 /Date de création[^\d]*(\d{2}\/\d{2}\/\d{4})/i,   // French format (DD/MM/YYYY)
                 /登録日[^\d]*(\d{4}-\d{2}-\d{2})/i,             // Japanese format (YYYY-MM-DD)
                 /등록일[^\d]*(\d{4}-\d{2}-\d{2})/i,              // Korean format (YYYY-MM-DD)
                 /注册时间[^\d]*(\d{4}-\d{2}-\d{2})/i,            // Chinese simplified format (YYYY-MM-DD)
-                /註冊時間[^\d]*(\d{4}-\d{2}-\d{2})/i,             // Chinese traditional format (YYYY-MM-DD)
-                /Updated Date[^\d]*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/i,  // ISO format with timestamp (T and Z)
-                /Creation Date[^\d]*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/i,  // ISO format with timestamp (T and Z)
-                /Registry Expiry Date[^\d]*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/i  // ISO format with timestamp (T and Z)
+                /註冊時間[^\d]*(\d{4}-\d{2}-\d{2})/i              // Chinese traditional format (YYYY-MM-DD)
             ];
 
             for (const pattern of datePatterns) {
                 const match = result.match(pattern);
                 if (match) {
                     let creationDate;
-                    // Handle different date formats
-                    if (match[1].includes('/')) {
+                    // Attempt to parse directly first (ISO, YYYY-MM-DD, etc.)
+                    let parsedDate = new Date(match[1]);
+
+                    if (!isNaN(parsedDate.getTime())) {
+                        creationDate = parsedDate;
+                    } else if (match[1].includes('/')) {
                         // Handle DD/MM/YYYY format
                         const [day, month, year] = match[1].split('/');
                         creationDate = new Date(`${year}-${month}-${day}`);
-                    } else if (match[1].includes('-') && match[1].length === 10 && parseInt(match[1].substring(0, 2)) > 31) {
-                        // Handle YYYY-MM-DD format
-                        creationDate = new Date(match[1]);
                     } else if (match[1].includes('-') && match[1].length === 10) {
                         // Handle DD-MM-YYYY format (like .hk domains)
+                        // This applies when direct parsing failed and it's a hyphenated 10-char string
                         const [day, month, year] = match[1].split('-');
                         creationDate = new Date(`${year}-${month}-${day}`);
-                    } else if (match[1].includes('T') && match[1].endsWith('Z')) {
-                        // Handle ISO format with timestamp (e.g., 2016-11-15T03:23:26Z)
-                        creationDate = new Date(match[1]);
                     } else {
-                        // Default to YYYY-MM-DD format
+                        // Fallback, though should be covered by direct parsing or specific formats
                         creationDate = new Date(match[1]);
                     }
                     
