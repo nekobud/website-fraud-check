@@ -506,7 +506,7 @@ class WebsiteFraudChecker {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'Content-Length': Buffer.byteLength(postData),
                     'User-Agent': 'WebsiteFraudChecker/1.0 (contact: contact@example.com)'
-                }
+                } 
             };
 
             // Make the POST request using Node.js http module
@@ -554,6 +554,8 @@ class WebsiteFraudChecker {
                                 resolve({
                                     isBlacklisted: false,
                                     threatsFound: [],
+                                    checkUnavailable: true,
+                                    message: 'PhishTank check unavailable: Unexpected API response format.',
                                     confidence: 'low'
                                 });
                             }
@@ -566,7 +568,9 @@ class WebsiteFraudChecker {
                             resolve({
                                 isBlacklisted: false,
                                 threatsFound: [],
-                                confidence: 'high'
+                                checkUnavailable: true,
+                                message: `PhishTank check unavailable: Failed to parse response (${parseError.message})`,
+                                confidence: 'low'
                             });
                         }
                     });
@@ -577,6 +581,8 @@ class WebsiteFraudChecker {
                     resolve({
                         isBlacklisted: false,
                         threatsFound: [],
+                        checkUnavailable: true,
+                        message: `PhishTank check unavailable: API request failed (${error.message})`,
                         confidence: 'low'
                     });
                 });
@@ -589,6 +595,8 @@ class WebsiteFraudChecker {
             return {
                 isBlacklisted: false,
                 threatsFound: [],
+                checkUnavailable: true,
+                message: `PhishTank check unavailable: An unexpected error occurred (${error.message})`,
                 confidence: 'low'
             };
         }
@@ -604,6 +612,8 @@ class WebsiteFraudChecker {
             return {
                 isBlacklisted: false,
                 threatsFound: [],
+                checkUnavailable: true,
+                message: 'Google Safe Browsing check unavailable: API key not provided',
                 confidence: 'low'
             };
         }
@@ -650,6 +660,8 @@ class WebsiteFraudChecker {
             return {
                 isBlacklisted: false,
                 threatsFound: [],
+                checkUnavailable: true,
+                message: `Google Safe Browsing check unavailable: An unexpected error occurred (${error.message})`,
                 confidence: 'low'
             };
         }
@@ -674,18 +686,30 @@ class WebsiteFraudChecker {
             ];
             
             const isBlacklisted = phishTankResult.isBlacklisted || googleResult.isBlacklisted;
+
+            let statusMessages = [];
+            if (phishTankResult.checkUnavailable) {
+                statusMessages.push(phishTankResult.message || 'PhishTank check unavailable.');
+            }
+            if (googleResult.checkUnavailable) {
+                statusMessages.push(googleResult.message || 'Google Safe Browsing check unavailable.');
+            }
             
             return {
                 isBlacklisted,
                 threatsFound: allThreats,
-                confidence: 'high' // We have high confidence when using these services
+                confidence: 'high', // Will adjust confidence dynamically later if needed
+                statusMessage: statusMessages.length > 0 ? statusMessages.join(' ') : ''
             };
         } catch (error) {
             console.debug(`Error in threat intelligence check: ${error.message}`);
             return {
                 isBlacklisted: false,
                 threatsFound: [],
-                confidence: 'low'
+                checkUnavailable: true,
+                message: `Threat intelligence check unavailable: An unexpected error occurred (${error.message})`,
+                confidence: 'low',
+                statusMessage: `Warning: Threat intelligence check failed due to unexpected error (${error.message})`
             };
         }
     }
@@ -991,13 +1015,18 @@ class WebsiteFraudChecker {
         // Step 5: Check against threat intelligence feeds
         console.log('\n🛡️  Checking against threat intelligence feeds...');
         const threatResult = await this.checkThreatIntelligence(websiteUrl);
+        
+        if (threatResult.statusMessage) {
+            console.log(`   ⚠️  ${threatResult.statusMessage}`);
+            riskScore += 5; // Add a small risk for unavailable checks
+        }
+
         if (threatResult.isBlacklisted) {
             console.log(`   ❌ Site found in threat feeds: ${threatResult.threatsFound.join(', ')}`);
             riskScore += 50; // Blacklisted sites get very high risk
-        } else {
+        } else if (!threatResult.statusMessage) { // Only log "Site not found" if no statusMessage (i.e., checks were performed and found nothing)
             console.log('   ✅ Site not found in threat feeds');
         }
-
         // Step 6: Check for phishing indicators in domain
         const phishingIndicators = this.checkPhishingIndicators(hostname);
         if (phishingIndicators.length > 0) {
@@ -1007,7 +1036,6 @@ class WebsiteFraudChecker {
         }
 
         // Step 7: Add points for impersonation indicators with differentiated scoring
-        const contentAnalysis = await this.analyzeContentWithoutFetching(websiteUrl, hostname).catch(() => ({ impersonation: [] }));
         
         // Calculate impersonation score with a cap to prevent unlimited accumulation
         let impersonationScore = 0;
