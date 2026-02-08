@@ -4,42 +4,14 @@ import { execSync } from 'child_process';
 import https from 'https';
 import http from 'http';
 import { URL } from 'url';
+import fs from 'fs'; // Moved from inside loadLegitimateDomains
+import path from 'path'; // Moved from inside loadLegitimateDomains
+import { parse, differenceInDays, parseISO } from 'date-fns'; // Import date-fns functions
+import * as Whoiser from 'whoiser';
 
 class WebsiteFraudChecker {
     constructor() {
-        // Common suspicious patterns in URLs
-        this.suspiciousPatterns = [
-            /\.tk(?![a-z])/,         // Free domain providers
-            /\.ml(?![a-z])/,         // Free domain providers
-            /\.ga(?![a-z])/,         // Free domain providers
-            /\.cf(?![a-z])/,         // Free domain providers
-            /\.bit(?![a-z])/,        // Free domain providers
-            /secure/i,               // Impersonation keywords
-            /login/i,
-            /account/i,
-            /verify/i,
-            /confirm/i,
-            /update/i,
-            /payment/i,
-            /bank/i,
-            /paypal/i,
-            /appleid/i,
-            /microsoft/i,
-            /google/i,
-            /facebook/i,
-            /amazon/i,
-            /sso/i,                  // Single sign-on impersonation
-            /oauth/i,                // OAuth impersonation
-            /auth/i,                 // Authentication impersonation
-            /signin/i,
-            /sign_in/i,
-            /log-in/i,
-            /log_in/i,
-            /www\d*\./,             // Multiple www variations
-            /-\w*-\w*-/              // Too many hyphens (typo-squatting)
-        ];
-
-        // Load legitimate domains from configuration file
+        this.config = this._loadFraudData();
         this.legitimateDomains = this.loadLegitimateDomains();
     }
 
@@ -48,11 +20,6 @@ class WebsiteFraudChecker {
      */
     loadLegitimateDomains() {
         try {
-            // Import file system module
-            const fs = require('fs');
-            const path = require('path');
-            
-            // Define the path to the legitimate domains file
             const filePath = path.resolve(__dirname, '../config/legitimate-domains.txt');
             
             // Read the file content
@@ -70,6 +37,60 @@ class WebsiteFraudChecker {
             console.debug(`Could not load legitimate domains from file: ${error.message}`);
             // Return an empty array if the file cannot be loaded
             return [];
+        }
+    }
+
+    /**
+     * Load fraud detection configuration from fraud-data.json
+     */
+    _loadFraudData() {
+        try {
+            const filePath = path.resolve(__dirname, '../config/fraud-data.json');
+            const content = fs.readFileSync(filePath, 'utf8');
+            const config = JSON.parse(content);
+
+            // Convert pattern strings to RegExp objects
+            config.suspiciousPatterns = config.suspiciousPatterns.map(p => new RegExp(p.pattern, p.flags));
+            config.fraudPatterns = config.fraudPatterns.map(p => new RegExp(p.pattern, p.flags));
+
+            return config;
+        } catch (error) {
+            console.debug(`Could not load fraud data from file: ${error.message}`);
+            // Return default empty configurations if file cannot be loaded
+            return {
+                suspiciousPatterns: [],
+                targetBrands: [],
+                fraudPatterns: [],
+                multiPartTlds: [],
+                suspiciousTlds: [],
+                homoglyphs: [],
+                digitSubstitutions: [],
+                maxImpersonationScore: 10,
+                bankBrands: [],
+                riskScoreMultipliers: { // Default values in case of loading error
+                    urlIssue: 3,
+                    uncertainDomainAge: 5,
+                    newDomainAge: 10,
+                    invalidSSL: 15,
+                    contentAnalysisUnavailable: 10,
+                    fraudIndicator: 2,
+                    threatFeedUnavailable: 5,
+                    blacklisted: 50,
+                    phishingIndicator: 5,
+                    bankBrandImpersonation: 10,
+                    otherBrandImpersonation: 5
+                },
+                thresholds: { // Default values in case of loading error
+                    domainAgeIsNewDays: 365,
+                    excessiveSubdomains: 2,
+                    unusualDotCount: 4,
+                    unusualDashCount: 4,
+                    excessiveHyphens: 2,
+                    popularityRankTopMillion: 1000000,
+                    popularityReductionPoints: 20
+                },
+                commonSubdomains: [] // Default value
+            };
         }
     }
 
@@ -95,16 +116,17 @@ class WebsiteFraudChecker {
 
             // Check for excessive subdomains (may indicate typo-squatting)
             const subdomainCount = url.hostname.split('.').length - 2;
-            if (subdomainCount > 2) {
+            if (subdomainCount > this.config.thresholds.excessiveSubdomains) {
                 issues.push(`⚠️  Excessive subdomains detected: ${subdomainCount} levels`);
             }
 
             // Check for suspicious patterns in the URL
-            for (const pattern of this.suspiciousPatterns) {
+            for (const pattern of this.config.suspiciousPatterns) {
                 if (pattern.test(url.hostname) || pattern.test(url.pathname) || pattern.test(url.search)) {
                     issues.push(`⚠️  Suspicious pattern detected: ${pattern.toString()}`);
                 }
             }
+
 
             // Check for homograph attacks (using characters that look similar to Latin letters)
             const nonLatinPattern = /[^\u0000-\u007F]/; // Non-ASCII characters
@@ -115,13 +137,12 @@ class WebsiteFraudChecker {
             // Check for too many dots or dashes in the hostname
             const dotCount = (url.hostname.match(/\./g) || []).length;
             const dashCount = (url.hostname.match(/-/g) || []).length;
-            if (dotCount > 4 || dashCount > 4) {
+            if (dotCount > this.config.thresholds.unusualDotCount || dashCount > this.config.thresholds.unusualDashCount) {
                 issues.push(`⚠️  Unusual number of dots (${dotCount}) or dashes (${dashCount}) in hostname`);
             }
 
             // Check for suspicious TLDs (free domains often used in phishing)
-            const suspiciousTlds = ['.tk', '.ml', '.ga', '.cf', '.bit'];
-            for (const tld of suspiciousTlds) {
+            for (const tld of this.config.suspiciousTlds) {
                 if (url.hostname.endsWith(tld)) {
                     issues.push(`⚠️  Suspicious TLD detected: ${tld}`);
                 }
@@ -150,74 +171,103 @@ class WebsiteFraudChecker {
             const rootDomain = this.extractRootDomain(hostname);
             console.log(`   ℹ️  Checking domain age for root domain: ${rootDomain}`);
             
-            // On some systems, whois might not be available or may require sudo
-            // We'll handle this gracefully
-            const result = execSync(`whois "${rootDomain}"`, { encoding: 'utf8', timeout: 10000 });
-            
-            // Look for creation/registration date patterns in the whois output
-            const datePatterns = [
-                /created[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /creation date[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /created on[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /create date[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /register date[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /registrar registration[^\d]*(\d{4}-\d{2}-\d{2})/i,
-                /Registration Date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Additional pattern for .ai domains
-                /Domain Registration Date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Another common pattern
-                /Created on[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Another variation
-                /Domain Name Commencement Date[^\d]*(\d{2}-\d{2}-\d{4})/i,  // .hk domain format (DD-MM-YYYY)
-                /Creation Date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Alternative format
-                /Creation date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Lowercase variant
-                /registrant created[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Some registries use this format
-                /created-date[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Hyphenated format
-                /Registered on[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Capitalized variant
-                /Record created on[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Extended format
-                /Registration Time[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Alternative term
-                /Domain created[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Different phrasing
-                /Domain registered[^\d]*(\d{4}-\d{2}-\d{2})/i,  // Different phrasing
-                /Fecha de registro[^\d]*(\d{2}\/\d{2}\/\d{4})/i,  // Spanish format (DD/MM/YYYY)
-                /Date de création[^\d]*(\d{2}\/\d{2}\/\d{4})/i,   // French format (DD/MM/YYYY)
-                /登録日[^\d]*(\d{4}-\d{2}-\d{2})/i,             // Japanese format (YYYY-MM-DD)
-                /등록일[^\d]*(\d{4}-\d{2}-\d{2})/i,              // Korean format (YYYY-MM-DD)
-                /注册时间[^\d]*(\d{4}-\d{2}-\d{2})/i,            // Chinese simplified format (YYYY-MM-DD)
-                /註冊時間[^\d]*(\d{4}-\d{2}-\d{2})/i             // Chinese traditional format (YYYY-MM-DD)
+            // Sanitize the root domain to prevent command injection
+            const sanitizedRootDomain = this._sanitizeDomain(rootDomain);
+
+            // Use whoiser to perform the WHOIS lookup
+            // whoiser returns an object where keys are WHOIS servers and values are their raw responses
+            const whoisResponse = await Whoiser.whois(sanitizedRootDomain);
+
+            const possibleDateFormats = [
+                'yyyy-MM-ddTHH:mm:ssX', // ISO 8601 with timezone (e.g., 2016-11-15T03:23:26Z, 2023-01-15T10:30:00+00:00)
+                'yyyy-MM-ddTHH:mm:ss',  // ISO 8601 without timezone
+                'yyyy-MM-dd',           // Standard YYYY-MM-DD (e.g., 2022-01-15)
+                'dd-MM-yyyy',           // DD-MM-YYYY (e.g., 15-08-2020)
+                'MM-dd-yyyy',           // MM-DD-YYYY
+                'dd/MM/yyyy',           // DD/MM/YYYY
+                'MM/dd/yyyy',           // MM/DD/YYYY
+                'yyyy/MM/dd',           // YYYY/MM/DD
             ];
 
-            for (const pattern of datePatterns) {
-                const match = result.match(pattern);
-                if (match) {
-                    let creationDate;
-                    // Handle different date formats
-                    if (match[1].includes('/')) {
-                        // Handle DD/MM/YYYY format
-                        const [day, month, year] = match[1].split('/');
-                        creationDate = new Date(`${year}-${month}-${day}`);
-                    } else if (match[1].includes('-') && match[1].length === 10 && parseInt(match[1].substring(0, 2)) > 31) {
-                        // Handle YYYY-MM-DD format
-                        creationDate = new Date(match[1]);
-                    } else if (match[1].includes('-') && match[1].length === 10) {
-                        // Handle DD-MM-YYYY format (like .hk domains)
-                        const [day, month, year] = match[1].split('-');
-                        creationDate = new Date(`${year}-${month}-${day}`);
-                    } else {
-                        // Default to YYYY-MM-DD format
-                        creationDate = new Date(match[1]);
-                    }
-                    
-                    const today = new Date();
-                    const diffTime = Math.abs(today - creationDate);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            // Helper function to find and parse date
+            const _findAndParseDate = (dateStr) => { 
+                if (!dateStr) return null;
+                dateStr = dateStr.trim();
 
-                    return {
-                        ageInDays: diffDays,
-                        creationDate: match[1],
-                        isNew: diffDays < 365, // Less than 1 year old
-                        rootDomain: rootDomain
-                    };
+                // Try parseISO first as it's optimized for ISO 8601
+                let parsedDate = parseISO(dateStr);
+                if (!isNaN(parsedDate.getTime())) {
+                    return parsedDate;
+                }
+
+                // Fallback to trying other explicit formats
+                for (const fmt of possibleDateFormats) {
+                    try { // <--- Added try-catch here
+                        parsedDate = parse(dateStr, fmt, new Date());
+                        if (!isNaN(parsedDate.getTime())) {
+                            return parsedDate;
+                        }
+                    } catch (e) {
+                        // If parse throws an error, consider it a failed parse for this format
+                        // and continue to the next format.
+                        // For example, some date-fns versions might throw on "T" mismatch.
+                        continue;
+                    }
+                }
+                return null;
+            };
+
+
+            // Iterate through WHOIS server responses to find a creation date
+            for (const serverResponse of Object.values(whoisResponse)) {
+                if (typeof serverResponse === 'string') { // Raw string response
+                    const dateFieldPatterns = [
+                        { regex: /(?:Creation Date|Created|Creation date|Registered On|Registrar Registration Date):?\s*([0-9\-\/\.\s:TZ]+)/i, name: "Creation Date" },
+                        { regex: /(?:Domain Name Commencement Date|Registro|Fecha de registro|Date de création|登録日|등록일|注册时间|註冊時間):?\s*([0-9\-\/\.\s:TZ]+)/i, name: "Local Creation Date" },
+                        { regex: /(?:Updated Date):?\s*([0-9\-\/\.\s:TZ]+)/i, name: "Updated Date" },
+                        { regex: /(?:Registry Expiry Date):?\s*([0-9\-\/\.\s:TZ]+)/i, name: "Expiry Date" },
+                    ];
+
+                    for (const dateFieldPattern of dateFieldPatterns) {
+                        const match = serverResponse.match(dateFieldPattern.regex);
+                        if (match && match[1]) {
+                            const candidateDateString = match[1].trim();
+                            const parsedDate = _findAndParseDate(candidateDateString); // Removed hostname debug param
+                            if (parsedDate) {
+                                return {
+                                    ageInDays: differenceInDays(new Date(), parsedDate),
+                                    creationDate: candidateDateString,
+                                    isNew: differenceInDays(new Date(), parsedDate) < this.config.thresholds.domainAgeIsNewDays,
+                                    rootDomain: rootDomain
+                                };
+                            }
+                        }
+                    }
+                } else if (typeof serverResponse === 'object' && serverResponse !== null) { // Structured object response
+                    // Prioritize standard fields
+                    const dateFields = [
+                        'Creation Date', 'Registered On', 'Created Date', 'Updated Date',
+                        'Registration Date', 'Domain Registration Date'
+                    ];
+
+                    for (const field of dateFields) {
+                        if (serverResponse[field]) {
+                            const candidateDateString = serverResponse[field].trim();
+                            const parsedDate = _findAndParseDate(candidateDateString); // Removed hostname debug param
+                            if (parsedDate) {
+                                return {
+                                    ageInDays: differenceInDays(new Date(), parsedDate),
+                                    creationDate: candidateDateString,
+                                    isNew: differenceInDays(new Date(), parsedDate) < this.config.thresholds.domainAgeIsNewDays,
+                                    rootDomain: rootDomain
+                                };
+                            }
+                        }
+                    }
                 }
             }
-
-            // If no creation date found, return null
+            
+            // If no creation date found after all loops, return null
             return null;
         } catch (error) {
             // If whois command fails, try alternative methods or return null
@@ -274,51 +324,53 @@ class WebsiteFraudChecker {
     }
 
     /**
-     * Fetch website content with both static and dynamic methods
+     * Fetch website content with Playwright first (if available), static as fallback
      */
     async fetchWebsiteContent(urlString) {
+        let browser = null; // Initialize browser to null
         try {
-            // First, try to fetch content statically
-            const staticContent = await this.fetchStaticContent(urlString);
+            const { chromium } = await import('playwright');
+            browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+            const page = await browser.newPage();
             
-            // If Playwright is available, also try to get dynamic content
-            let dynamicContent = '';
-            try {
-                const { chromium } = await import('playwright');
-                const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-                const page = await browser.newPage();
-                
-                // Set a realistic user agent
-                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-                
-                // Navigate to the page
-                await page.goto(urlString, { waitUntil: 'networkidle', timeout: 10000 });
-                
-                // Wait for content to load
-                await page.waitForLoadState('domcontentloaded', { timeout: 5000 });
-                
-                // Get the content after JavaScript execution
-                dynamicContent = await page.content();
-                
-                await browser.close();
-            } catch (dynamicError) {
-                // If Playwright fails, that's okay - we'll just use static content
-                console.debug(`Dynamic content fetch failed (this is normal if Playwright is not installed): ${dynamicError.message}`);
+            // Set a realistic user agent
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+            
+            // Navigate to the page
+            await page.goto(urlString, { waitUntil: 'networkidle', timeout: 15000 });
+            
+            // Wait for content to load
+            await page.waitForLoadState('domcontentloaded', { timeout: 10000 });
+            
+            // Get the content after JavaScript execution
+            const dynamicContent = await page.content();
+            
+            console.log('   ✅ Content fetched successfully with Playwright (dynamic rendering)');
+            
+            return {
+                statusCode: 200, // Assume success since Playwright loaded the page
+                headers: {},
+                content: dynamicContent
+            };
+        } catch (dynamicError) {
+            // Playwright failed, warn user about reduced accuracy
+            console.log(`   ⚠️  Playwright failed: ${dynamicError.message}`);
+            console.log('   ⚠️  Falling back to static content fetching - accuracy may be reduced without dynamic rendering');
+            // Do not re-throw here, let the outer function handle the fallback.
+        } finally {
+            if (browser) {
+                await browser.close(); // Ensure browser is always closed
             }
+        }
 
-            // Return the content that has more text (indicating more complete scraping)
-            if (dynamicContent && dynamicContent.length > staticContent.content.length) {
-                return {
-                    statusCode: staticContent.statusCode,
-                    headers: staticContent.headers,
-                    content: dynamicContent
-                };
-            } else {
-                return staticContent;
-            }
-        } catch (error) {
-            console.debug(`Failed to fetch website content: ${error.message}`);
-            throw error;
+        // Fallback to static content fetching
+        try {
+            const staticContent = await this.fetchStaticContent(urlString);
+            console.log('   ⚠️  Content fetched with static method - some dynamic elements may be missing');
+            return staticContent;
+        } catch (staticError) {
+            console.debug(`Failed to fetch website content: ${staticError.message}`);
+            throw staticError;
         }
     }
 
@@ -379,13 +431,7 @@ class WebsiteFraudChecker {
         const brandMentions = [];
 
         // Brands that are commonly impersonated
-        const targetBrands = [
-            'google', 'facebook', 'paypal', 'apple', 'microsoft', 'amazon', 'netflix', 
-            'spotify', 'adobe', 'github', 'twitter', 'instagram', 'linkedin', 'yahoo',
-            'gmail', 'youtube', 'whatsapp', 'snapchat', 'tiktok', 'discord',
-            'paypal', 'hangseng', 'hsbc', 'bochk', 'bankofchina', 'standardchartered', 
-            'dbs', 'ocbc', 'citicbank', 'winglung', 'chbank', 'hkbea', 'bankcomm'
-        ];
+        const targetBrands = this.config.targetBrands;
 
         // Convert content to lowercase for comparison
         const lowerContent = content.toLowerCase();
@@ -403,7 +449,6 @@ class WebsiteFraudChecker {
                 );
                 
                 if (!isOfficialDomain) {
-                    // Add to impersonation if not on official domain
                     impersonation.push({
                         brand: brand,
                         count: matches.length,
@@ -420,32 +465,7 @@ class WebsiteFraudChecker {
         }
 
         // Look for common fraud indicators in the content
-        const fraudPatterns = [
-            /urgent/i,
-            /immediate action required/i,
-            /verify your account/i,
-            /confirm your identity/i,
-            /security alert/i,
-            /suspicious activity/i,
-            /locked|lock/i,
-            /suspended/i,
-            /reactivate/i,
-            /update your information/i,
-            /personal details/i,
-            /credit card/i,
-            /ssn|social security/i,
-            /password/i,
-            /login credentials/i,
-            /confirm now/i,
-            /act now/i,
-            /limited time/i,
-            /congratulations.*winner/i,
-            /claim your prize/i,
-            /free money/i,
-            /click here/i,
-            /act immediately/i,
-            /verify immediately/i
-        ];
+        const fraudPatterns = this.config.fraudPatterns;
 
         for (const pattern of fraudPatterns) {
             const matches = content.match(pattern) || [];
@@ -501,7 +521,7 @@ class WebsiteFraudChecker {
                     'Content-Type': 'application/x-www-form-urlencoded',
                     'Content-Length': Buffer.byteLength(postData),
                     'User-Agent': 'WebsiteFraudChecker/1.0 (contact: contact@example.com)'
-                }
+                } 
             };
 
             // Make the POST request using Node.js http module
@@ -549,6 +569,8 @@ class WebsiteFraudChecker {
                                 resolve({
                                     isBlacklisted: false,
                                     threatsFound: [],
+                                    checkUnavailable: true,
+                                    message: 'PhishTank check unavailable: Unexpected API response format.',
                                     confidence: 'low'
                                 });
                             }
@@ -561,7 +583,9 @@ class WebsiteFraudChecker {
                             resolve({
                                 isBlacklisted: false,
                                 threatsFound: [],
-                                confidence: 'high'
+                                checkUnavailable: true,
+                                message: `PhishTank check unavailable: Failed to parse response (${parseError.message})`,
+                                confidence: 'low'
                             });
                         }
                     });
@@ -572,6 +596,8 @@ class WebsiteFraudChecker {
                     resolve({
                         isBlacklisted: false,
                         threatsFound: [],
+                        checkUnavailable: true,
+                        message: `PhishTank check unavailable: API request failed (${error.message})`,
                         confidence: 'low'
                     });
                 });
@@ -584,6 +610,8 @@ class WebsiteFraudChecker {
             return {
                 isBlacklisted: false,
                 threatsFound: [],
+                checkUnavailable: true,
+                message: `PhishTank check unavailable: An unexpected error occurred (${error.message})`,
                 confidence: 'low'
             };
         }
@@ -599,6 +627,8 @@ class WebsiteFraudChecker {
             return {
                 isBlacklisted: false,
                 threatsFound: [],
+                checkUnavailable: true,
+                message: 'Google Safe Browsing check unavailable: API key not provided',
                 confidence: 'low'
             };
         }
@@ -645,6 +675,8 @@ class WebsiteFraudChecker {
             return {
                 isBlacklisted: false,
                 threatsFound: [],
+                checkUnavailable: true,
+                message: `Google Safe Browsing check unavailable: An unexpected error occurred (${error.message})`,
                 confidence: 'low'
             };
         }
@@ -669,18 +701,30 @@ class WebsiteFraudChecker {
             ];
             
             const isBlacklisted = phishTankResult.isBlacklisted || googleResult.isBlacklisted;
+
+            let statusMessages = [];
+            if (phishTankResult.checkUnavailable) {
+                statusMessages.push(phishTankResult.message || 'PhishTank check unavailable.');
+            }
+            if (googleResult.checkUnavailable) {
+                statusMessages.push(googleResult.message || 'Google Safe Browsing check unavailable.');
+            }
             
             return {
                 isBlacklisted,
                 threatsFound: allThreats,
-                confidence: 'high' // We have high confidence when using these services
+                confidence: 'high', // Will adjust confidence dynamically later if needed
+                statusMessage: statusMessages.length > 0 ? statusMessages.join(' ') : ''
             };
         } catch (error) {
             console.debug(`Error in threat intelligence check: ${error.message}`);
             return {
                 isBlacklisted: false,
                 threatsFound: [],
-                confidence: 'low'
+                checkUnavailable: true,
+                message: `Threat intelligence check unavailable: An unexpected error occurred (${error.message})`,
+                confidence: 'low',
+                statusMessage: `Warning: Threat intelligence check failed due to unexpected error (${error.message})`
             };
         }
     }
@@ -694,22 +738,7 @@ class WebsiteFraudChecker {
 
         // Handle multi-part TLDs like .co.uk, .com.au, etc.
         // Common multi-part TLDs
-        const multiPartTlds = [
-            'co.uk', 'com.au', 'co.jp', 'com.br', 'co.za', 'com.sg', 'com.mx',
-            'ne.jp', 'or.jp', 'go.jp', 'ac.jp', 'co.kr', 'co.nz', 'co.za',
-            'com.tw', 'com.hk', 'com.ar', 'com.pe', 'com.uy', 'com.py',
-            'com.bo', 'com.ec', 'com.gt', 'com.hn', 'com.ni', 'com.pa',
-            'com.py', 'com.sv', 'com.ve', 'co.in', 'co.ls', 'co.ma',
-            'co.mu', 'co.ke', 'co.cr', 'co.id', 'co.il', 'co.zm',
-            'com.af', 'com.ag', 'com.ai', 'com.bn', 'com.bz', 'com.cn',
-            'com.do', 'com.dm', 'com.eg', 'com.et', 'com.fj', 'com.gh',
-            'com.gi', 'com.gt', 'com.gu', 'com.iq', 'com.jm', 'com.kh',
-            'com.kw', 'com.lb', 'com.ly', 'com.mm', 'com.mt', 'com.mx',
-            'com.my', 'com.na', 'com.ng', 'com.nf', 'com.om', 'com.pg',
-            'com.ph', 'com.pk', 'com.pr', 'com.py', 'com.qa', 'com.sa',
-            'com.sb', 'com.sg', 'com.sl', 'com.sv', 'com.tj', 'com.tt',
-            'com.tw', 'com.ua', 'com.uy', 'com.vc', 'com.ve', 'com.vn'
-        ];
+        const multiPartTlds = this.config.multiPartTlds;
 
         // If the last two parts form a known multi-part TLD, take the last three parts
         if (parts.length >= 3) {
@@ -717,7 +746,7 @@ class WebsiteFraudChecker {
             if (multiPartTlds.includes(lastTwoParts)) {
                 // For multi-part TLDs, only remove the first part if it's a common subdomain
                 if (parts.length > 3) {
-                    const commonSubdomains = ['www', 'mail', 'ftp', 'blog', 'shop', 'api', 'dev', 'test', 'docs', 'support', 'admin', 'secure'];
+                    const commonSubdomains = this.config.commonSubdomains;
                     if (commonSubdomains.includes(parts[0].toLowerCase())) {
                         return parts.slice(-3).join('.'); // Return last 3 parts (subdomain.domain.tld)
                     }
@@ -729,7 +758,7 @@ class WebsiteFraudChecker {
         // For regular domains, handle common subdomains properly
         // The logic should remove only the FIRST part if it's a common subdomain
         if (parts.length > 2) {
-            const commonSubdomains = ['www', 'mail', 'ftp', 'blog', 'shop', 'api', 'dev', 'test', 'docs', 'support', 'admin', 'secure'];
+            const commonSubdomains = this.config.commonSubdomains;
             
             // Only check if the first part is a common subdomain
             if (commonSubdomains.includes(parts[0].toLowerCase())) {
@@ -745,6 +774,18 @@ class WebsiteFraudChecker {
 
         // If it's already a root domain (like 'openclaw.ai'), return as is
         return hostname;
+    }
+
+    /**
+     * Safely sanitize a domain name for use in shell commands to prevent injection.
+     * Allows only alphanumeric characters, hyphens, and dots.
+     */
+    _sanitizeDomain(domain) {
+        // Remove any characters that are not alphanumeric, hyphens, or dots
+        // This regex ensures that only valid domain name characters are present
+        const sanitized = domain.replace(/[^a-zA-Z0-9.-]/g, '');
+        // Further remove any leading/trailing dots or hyphens that might have been introduced or remained
+        return sanitized.replace(/^[.-]+|[.-]+$/g, '');
     }
 
     /**
@@ -813,8 +854,8 @@ class WebsiteFraudChecker {
                     
                     // Apply risk reduction based on popularity
                     // As of today, being in top 1,000,000 is considered popular and gets 20 point deduction
-                    if (rank <= 1000000) {
-                        return 20; // Popular sites get 20 point reduction
+                    if (rank <= this.config.thresholds.popularityRankTopMillion) {
+                        return this.config.thresholds.popularityReductionPoints; // Popular sites get configurable point reduction
                     }
                 }
             }
@@ -839,24 +880,14 @@ class WebsiteFraudChecker {
         }
 
         // Check for suspicious TLDs
-        const suspiciousTlds = ['.tk', '.ml', '.ga', '.cf', '.bit'];
-        for (const tld of suspiciousTlds) {
+        for (const tld of this.config.suspiciousTlds) {
             if (hostname.endsWith(tld)) {
                 indicators.push(`Suspicious TLD: ${tld}`);
             }
         }
 
         // Check for character substitution (homoglyphs)
-        const homoglyphs = [
-            { char: 'а', replacement: 'a' }, // Cyrillic 'а' vs Latin 'a'
-            { char: 'о', replacement: 'o' }, // Cyrillic 'о' vs Latin 'o'
-            { char: 'е', replacement: 'e' }, // Cyrillic 'е' vs Latin 'e'
-            { char: 'р', replacement: 'p' }, // Cyrillic 'р' vs Latin 'p'
-            { char: 'с', replacement: 'c' }, // Cyrillic 'с' vs Latin 'c'
-            { char: 'х', replacement: 'x' }, // Cyrillic 'х' vs Latin 'x'
-        ];
-
-        for (const glyph of homoglyphs) {
+        for (const glyph of this.config.homoglyphs) {
             if (hostname.includes(glyph.char)) {
                 indicators.push(`Homoglyph detected: '${glyph.char}' looks like '${glyph.replacement}'`);
             }
@@ -864,20 +895,12 @@ class WebsiteFraudChecker {
 
         // Check for excessive hyphens (often used in typo-squatting)
         const hyphenCount = (hostname.match(/-/g) || []).length;
-        if (hyphenCount > 2) {
+        if (hyphenCount > this.config.thresholds.excessiveHyphens) {
             indicators.push(`Excessive hyphens (${hyphenCount}) may indicate typo-squatting`);
         }
 
         // Check for digits that look like letters
-        const digitSubstitutions = [
-            { char: '0', replacement: 'o' },
-            { char: '1', replacement: 'l' },
-            { char: '3', replacement: 'e' },
-            { char: '5', replacement: 's' },
-            { char: '8', replacement: 'b' },
-        ];
-
-        for (const sub of digitSubstitutions) {
+        for (const sub of this.config.digitSubstitutions) {
             // Check if the character exists but the lookalike letter doesn't
             // This suggests intentional substitution
             const originalLetterExists = hostname.includes(sub.replacement);
@@ -925,7 +948,7 @@ class WebsiteFraudChecker {
         if (urlIssues.length > 0) {
             console.log(`   ⚠️  Found ${urlIssues.length} potential issues:`);
             urlIssues.forEach(issue => console.log(`      ${issue}`));
-            riskScore += urlIssues.length * 3; // Add 3 points per URL issue
+            riskScore += urlIssues.length * this.config.riskScoreMultipliers.urlIssue; // Add configurable points per URL issue
         } else {
             console.log('   ✅ URL appears structurally sound');
         }
@@ -936,13 +959,13 @@ class WebsiteFraudChecker {
         if (domainAge) {
             if (domainAge.isNew) {
                 console.log(`   ⚠️  Domain ${domainAge.rootDomain} is relatively new (${domainAge.ageInDays} days old)`);
-                riskScore += 10; // New domains get higher risk
+                riskScore += this.config.riskScoreMultipliers.newDomainAge; // New domains get higher risk
             } else {
                 console.log(`   ✅ Domain ${domainAge.rootDomain} has been registered for ${domainAge.ageInDays} days`);
             }
         } else {
             console.log('   ℹ️  Could not determine domain age (whois may not be available)');
-            riskScore += 5; // Uncertain domain age increases risk slightly
+            riskScore += this.config.riskScoreMultipliers.uncertainDomainAge; // Uncertain domain age increases risk slightly
         }
 
         // Step 3: Check SSL certificate
@@ -952,14 +975,14 @@ class WebsiteFraudChecker {
             console.log(`   ✅ SSL certificate is valid (issued by: ${sslResult.issuer})`);
         } else {
             console.log(`   ⚠️  SSL certificate issue: ${sslResult.error || 'Invalid certificate'}`);
-            riskScore += 15; // Invalid SSL significantly increases risk
+            riskScore += this.config.riskScoreMultipliers.invalidSSL; // Invalid SSL significantly increases risk
         }
 
         // Step 4: Analyze website content
         console.log('\n📄 Analyzing website content...');
         let contentResult;
         try {
-            const fetchedContent = await this.fetchWebsiteContent(websiteUrl);
+            const fetchedContent = await this.fetchWebsiteContent(websiteUrl); 
             contentResult = this.analyzeWebsiteContent(fetchedContent.content, hostname);
             console.log(`   ✅ Content fetched successfully (${fetchedContent.content.length} chars)`);
             
@@ -975,50 +998,53 @@ class WebsiteFraudChecker {
                 contentResult.fraudIndicators.forEach(ind => {
                     console.log(`      - Pattern "${ind.pattern}" found ${ind.count} times`);
                 });
-                riskScore += contentResult.fraudIndicators.length * 2;
+                riskScore += contentResult.fraudIndicators.length * this.config.riskScoreMultipliers.fraudIndicator;
             }
         } catch (error) {
             console.log(`   ⚠️  Could not fetch website content: ${error.message}`);
             console.log('   ℹ️  Proceeding with analysis based on other factors');
-            riskScore += 10; // Can't analyze content, increase risk
+            riskScore += this.config.riskScoreMultipliers.contentAnalysisUnavailable; // Can't analyze content, increase risk
         }
 
         // Step 5: Check against threat intelligence feeds
         console.log('\n🛡️  Checking against threat intelligence feeds...');
         const threatResult = await this.checkThreatIntelligence(websiteUrl);
-        if (threatResult.isBlacklisted) {
-            console.log(`   ❌ Site found in threat feeds: ${threatResult.threatsFound.join(', ')}`);
-            riskScore += 50; // Blacklisted sites get very high risk
-        } else {
-            console.log('   ✅ Site not found in threat feeds');
+        
+        if (threatResult.statusMessage) {
+            console.log(`   ⚠️  ${threatResult.statusMessage}`);
+            riskScore += this.config.riskScoreMultipliers.threatFeedUnavailable; // Add a small risk for unavailable checks
         }
 
+        if (threatResult.isBlacklisted) {
+            console.log(`   ❌ Site found in threat feeds: ${threatResult.threatsFound.join(', ')}`);
+            riskScore += this.config.riskScoreMultipliers.blacklisted; // Blacklisted sites get very high risk
+        } else if (!threatResult.statusMessage) { // Only log "Site not found" if no statusMessage (i.e., checks were performed and found nothing)
+            console.log('   ✅ Site not found in threat feeds');
+        }
         // Step 6: Check for phishing indicators in domain
         const phishingIndicators = this.checkPhishingIndicators(hostname);
         if (phishingIndicators.length > 0) {
             console.log(`   ⚠️  Found ${phishingIndicators.length} phishing indicators in domain:`);
             phishingIndicators.forEach(indicator => console.log(`      - ${indicator}`));
-            riskScore += phishingIndicators.length * 5;
+            riskScore += phishingIndicators.length * this.config.riskScoreMultipliers.phishingIndicator;
         }
 
         // Step 7: Add points for impersonation indicators with differentiated scoring
-        const contentAnalysis = await this.analyzeContentWithoutFetching(websiteUrl, hostname).catch(() => ({ impersonation: [] }));
         
         // Calculate impersonation score with a cap to prevent unlimited accumulation
         let impersonationScore = 0;
-        const MAX_IMPERSONATION_SCORE = 10; // Cap the total points from impersonation indicators
+        const MAX_IMPERSONATION_SCORE = this.config.maxImpersonationScore; // Cap the total points from impersonation indicators
         
         for (const impersonation of contentResult?.impersonation || []) {
             const brand = impersonation.brand.toLowerCase();
             
             // Higher risk for banking/financial brands
-            const bankBrands = ['paypal', 'hangseng', 'hsbc', 'bochk', 'bankofchina', 'standardchartered', 
-                               'dbs', 'ocbc', 'citicbank', 'winglung', 'chbank', 'hkbea', 'bankcomm'];
+            const bankBrands = this.config.bankBrands;
             
             if (bankBrands.includes(brand)) {
-                impersonationScore += 10; // 10 points for banking brands
+                impersonationScore += this.config.riskScoreMultipliers.bankBrandImpersonation; // Configurable points for banking brands
             } else {
-                impersonationScore += 5;  // 5 points for other tech brands
+                impersonationScore += this.config.riskScoreMultipliers.otherBrandImpersonation;  // Configurable points for other tech brands
             }
             
             // Check if we've reached the cap

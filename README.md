@@ -4,12 +4,12 @@ A skill for detecting potentially fraudulent websites by analyzing various indic
 
 ## Features
 
-- 🔍 URL pattern analysis for suspicious elements
-- 📅 Domain age verification
-- 🔒 SSL certificate validation
+- 🛡️ Threat intelligence feed checking
 - 📄 Static and dynamic content analysis
 - 🎭 Brand impersonation detection
-- 🛡️ Threat intelligence feed checking
+- 📅 Domain age verification
+- 🔍 URL pattern analysis for suspicious elements
+- 🔒 SSL certificate validation
 - 📊 Risk scoring and assessment
 
 ## Prerequisites
@@ -17,7 +17,6 @@ A skill for detecting potentially fraudulent websites by analyzing various indic
 ### Basic Requirements
 - Node.js
 - Internet connectivity
-- whois (install with: `sudo apt install whois` or `brew install whois`)
 
 ### Enhanced Detection (Optional but Recommended)
 For improved detection of dynamically-rendered websites (those that update HTML DOM after page load), install Playwright:
@@ -73,7 +72,7 @@ node scripts/website_fraud_check.mjs https://example.com
 The system evaluates websites based on multiple factors:
 
 1. **URL Analysis**: Checks for suspicious patterns and structures
-2. **Domain Age**: New domains (less than 1 year) receive higher risk scores
+2. **Domain Age**: Uses the `whoiser` Node.js library to check domain registration age; new domains (less than 1 year) receive higher risk scores.
 3. **SSL Verification**: Ensures secure connections
 4. **Content Analysis**: Scans for brand impersonation and suspicious elements
    - **Static Content**: Direct HTML parsing for standard websites
@@ -88,29 +87,32 @@ flowchart TD
     C --> D[Check Domain Registration Age]
     D --> E[Verify SSL Certificate]
     E --> F[Fetch Website Content]
-    F --> G{Has Dynamic Content?}
+    F --> G{Playwright Available?}
     G -->|Yes| H[Render with Playwright]
     G -->|No| I[Scrape Static Content]
-    H --> J[Analyze Content for Impersonation]
-    I --> J
-    J --> K[Check Threat Intelligence Services]
-    K --> L[PhishTank API Check]
-    K --> M[Google Safe Browsing Check]
-    L --> N[Aggregate Results]
-    M --> N
-    N --> O[Check Website Popularity]
-    O --> P[Calculate Risk Score]
-    P --> Q{Risk Level?}
-    Q -->|Low| R[Return Low Risk Assessment]
-    Q -->|Medium| S[Return Medium Risk Assessment]
-    Q -->|High| T[Return High Risk Assessment]
-    Q -->|Critical| U[Return Critical Risk Assessment]
+    H --> J{Success?}
+    J -->|Yes| K[Analyze Content for Impersonation]
+    J -->|No| I
+    I --> L[Analyze Content for Impersonation]
+    K --> M[Check Threat Intelligence Services]
+    L --> M
+    M --> N[PhishTank API Check]
+    M --> O[Google Safe Browsing Check]
+    N --> P[Aggregate Results]
+    O --> P
+    P --> Q[Check Website Popularity]
+    Q --> R[Calculate Risk Score]
+    R --> S{Risk Level?}
+    S -->|Low| T[Return Low Risk Assessment]
+    S -->|Medium| U[Return Medium Risk Assessment]
+    S -->|High| V[Return High Risk Assessment]
+    S -->|Critical| W[Return Critical Risk Assessment]
     
     style A fill:#e1f5fe
-    style R fill:#e8f5e8
-    style S fill:#fff3e0
-    style T fill:#ffebee
-    style U fill:#ffcdd2
+    style T fill:#e8f5e8
+    style U fill:#fff3e0
+    style V fill:#ffebee
+    style W fill:#ffcdd2
 ```
 
 ## Detection Capabilities
@@ -124,36 +126,44 @@ The skill can detect:
 - Suspicious URL structures
 - Known phishing sites from threat intelligence feeds (with API integration)
 
+## Configuration
+
+All configurable constants and thresholds for the fraud checking logic are centralized in `config/fraud-data.json`. This includes:
+- Suspicious URL patterns
+- Target brand names for impersonation detection
+- Specific fraud indicators
+- Lists of multi-part TLDs and suspicious TLDs
+- Homoglyph and digit substitution definitions
+- Risk score multipliers and age thresholds
+
 ## Threat Intelligence Integration
 
-The skill integrates with multiple threat intelligence services:
+The skill integrates with threat intelligence services (PhishTank, Google Safe Browsing) to identify known malicious sites. API keys for enhanced services (e.g., Google Safe Browsing) should be configured as environment variables.
 
-- **PhishTank API**: Checks against known phishing sites (no API key required for basic lookups)
-- **Google Safe Browsing API**: Checks against Google's list of unsafe websites (requires API key)
+## Improvements (as a Cybersecurity and Fraud Specialist)
 
-### Service Status Reporting
+The current agent skill provides a solid foundation for detecting fraudulent websites. To further enhance its effectiveness, the following improvements are recommended:
 
-When running the tool, you'll see a status report showing which threat intelligence services are active:
+### 1. Behavioral Analysis & Sandbox Execution
+-   **Automated Interaction:** Implement logic to simulate user clicks, form submissions, and observe DOM changes over time to detect interactive fraud patterns.
+-   **Headless Browser Sandboxing:** Execute suspected pages in a sandboxed headless browser environment to observe network requests, script execution, and resource loading for anomalous activities.
+-   **Redirection Chain Analysis:** Explicitly trace and analyze all redirection types (HTTP, meta refresh, JavaScript) to identify suspicious intermediate domains or evasion techniques.
 
-```
-Threat Intelligence Service Status:
-  PhishTank: Active - Basic lookups available without API key
-  Google Safe Browsing: Inactive - Missing GOOGLE_SAFE_BROWSING_API_KEY environment variable
-```
+### 2. Advanced Impersonation Detection
+-   **Visual Similarity (Perceptual Hashing):** Introduce visual comparison methods (e.g., perceptual hashing) to compare screenshots of suspected sites against known legitimate sites, enhancing detection of visual brand impersonation.
+-   **Natural Language Processing (NLP):** Utilize advanced NLP models to detect subtle linguistic cues (e.g., unusual urgency, grammatical errors, specific scam terminology) often indicative of fraudulent content.
 
-### Setup for Enhanced APIs
+### 3. Expanded Threat Intelligence
+-   **More Feeds:** Integrate with additional, diverse, and specialized threat intelligence sources (e.g., for malware, specific phishing kits, compromised domain lists from reputable cybersecurity vendors).
+-   **Contextual TI:** Implement the ability to query threat intelligence specific to targeted brands or industries for more relevant threat data.
 
-To enable Google Safe Browsing API:
-1. Register for an API key at https://developers.google.com/safe-browsing/
-2. Set the environment variable: `GOOGLE_SAFE_BROWSING_API_KEY=your_api_key_here`
+### 4. Machine Learning for Risk Scoring
+-   **Dynamic Scoring:** Develop and train a machine learning model on a dataset of known fraudulent and legitimate websites to provide more nuanced, adaptive, and predictive risk scores.
+-   **Feature Importance:** Leverage ML models to identify and weight the most impactful indicators in fraud detection, potentially uncovering non-obvious correlations.
 
-### PhishTank Integration
-
-The system uses HTTP POST requests to check URLs against the PhishTank database:
-1. Register for an API key at https://www.phishtank.com/api_info.php (optional but recommended)
-2. For simple daily lookups, the system performs direct HTTP POST requests to verify a URL's status
-
-The PhishTank API accepts HTTP POST requests and returns responses indicating a URL's status in their database.
+### 5. Performance and Scalability
+-   **WHOIS Caching:** Implement a local or distributed cache for WHOIS results to reduce redundant queries, speed up checks, and avoid rate limits imposed by WHOIS servers.
+-   **Distributed Scans:** For large-scale or continuous monitoring, consider a distributed architecture for scanning to parallelize resource-intensive tasks like Playwright rendering and WHOIS lookups.
 
 ## Limitations
 
