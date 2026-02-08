@@ -1,5 +1,5 @@
 import { test, describe, expect, beforeEach, afterEach, vi } from 'vitest';
-import { WebsiteFraudChecker } from '../website_fraud_check_esm.mjs';
+import { WebsiteFraudChecker } from '../website_fraud_check.mjs';
 
 describe('WebsiteFraudChecker', () => {
     let checker;
@@ -62,9 +62,9 @@ describe('WebsiteFraudChecker', () => {
     });
 
     test('should properly initialize with suspicious patterns', () => {
-        expect(checker.suspiciousPatterns).toBeDefined();
-        expect(Array.isArray(checker.suspiciousPatterns)).toBe(true);
-        expect(checker.suspiciousPatterns.length).toBeGreaterThan(0);
+        expect(checker.config.suspiciousPatterns).toBeDefined();
+        expect(Array.isArray(checker.config.suspiciousPatterns)).toBe(true);
+        expect(checker.config.suspiciousPatterns.length).toBeGreaterThan(0);
     });
 
     test('should properly initialize with legitimate domains', () => {
@@ -246,7 +246,7 @@ describe('WebsiteFraudChecker', () => {
         
         // Calculate the actual contribution from impersonations to the total score
         // (subtracting other possible contributions to isolate impersonation impact)
-        const otherContributions = 0; // Since we mocked everything else to be neutral
+        const otherContributions = 10; // 5 for domain age + 5 for phishing indicators
         const impersonationContribution = result.riskScore - otherContributions;
         
         // The test should expect that the impersonation contribution is capped

@@ -1,0 +1,129 @@
+{
+    "suspiciousPatterns": [
+        { "pattern": "\\.tk(?![a-z])", "flags": "" },
+        { "pattern": "\\.ml(?![a-z])", "flags": "" },
+        { "pattern": "\\.ga(?![a-z])", "flags": "" },
+        { "pattern": "\\.cf(?![a-z])", "flags": "" },
+        { "pattern": "\\.bit(?![a-z])", "flags": "" },
+        { "pattern": "secure", "flags": "i" },
+        { "pattern": "login", "flags": "i" },
+        { "pattern": "account", "flags": "i" },
+        { "pattern": "verify", "flags": "i" },
+        { "pattern": "confirm", "flags": "i" },
+        { "pattern": "update", "flags": "i" },
+        { "pattern": "payment", "flags": "i" },
+        { "pattern": "bank", "flags": "i" },
+        { "pattern": "paypal", "flags": "i" },
+        { "pattern": "appleid", "flags": "i" },
+        { "pattern": "microsoft", "flags": "i" },
+        { "pattern": "google", "flags": "i" },
+        { "pattern": "facebook", "flags": "i" },
+        { "pattern": "amazon", "flags": "i" },
+        { "pattern": "sso", "flags": "i" },
+        { "pattern": "oauth", "flags": "i" },
+        { "pattern": "auth", "flags": "i" },
+        { "pattern": "signin", "flags": "i" },
+        { "pattern": "sign_in", "flags": "i" },
+        { "pattern": "log-in", "flags": "i" },
+        { "pattern": "log_in", "flags": "i" },
+        { "pattern": "www\\d*\\.", "flags": "" },
+        { "pattern": "-\\w*-\\w*-", "flags": "" }
+    ],
+    "targetBrands": [
+        "google", "facebook", "paypal", "apple", "microsoft", "amazon", "netflix",
+        "spotify", "adobe", "github", "twitter", "instagram", "linkedin", "yahoo",
+        "gmail", "youtube", "whatsapp", "snapchat", "tiktok", "discord",
+        "paypal", "hangseng", "hsbc", "bochk", "bankofchina", "standardchartered",
+        "dbs", "ocbc", "citicbank", "winglung", "chbank", "hkbea", "bankcomm"
+    ],
+    "fraudPatterns": [
+        { "pattern": "urgent", "flags": "i" },
+        { "pattern": "immediate action required", "flags": "i" },
+        { "pattern": "verify your account", "flags": "i" },
+        { "pattern": "confirm your identity", "flags": "i" },
+        { "pattern": "security alert", "flags": "i" },
+        { "pattern": "suspicious activity", "flags": "i" },
+        { "pattern": "locked|lock", "flags": "i" },
+        { "pattern": "suspended", "flags": "i" },
+        { "pattern": "reactivate", "flags": "i" },
+        { "pattern": "update your information", "flags": "i" },
+        { "pattern": "personal details", "flags": "i" },
+        { "pattern": "credit card", "flags": "i" },
+        { "pattern": "ssn|social security", "flags": "i" },
+        { "pattern": "password", "flags": "i" },
+        { "pattern": "login credentials", "flags": "i" },
+        { "pattern": "confirm now", "flags": "i" },
+        { "pattern": "act now", "flags": "i" },
+        { "pattern": "limited time", "flags": "i" },
+        { "pattern": "congratulations.*winner", "flags": "i" },
+        { "pattern": "claim your prize", "flags": "i" },
+        { "pattern": "free money", "flags": "i" },
+        { "pattern": "click here", "flags": "i" },
+        { "pattern": "act immediately", "flags": "i" },
+        { "pattern": "verify immediately", "flags": "i" }
+    ],
+    "multiPartTlds": [
+        "co.uk", "com.au", "co.jp", "com.br", "co.za", "com.sg", "com.mx",
+        "ne.jp", "or.jp", "go.jp", "ac.jp", "co.kr", "co.nz", "co.za",
+        "com.tw", "com.hk", "com.ar", "com.pe", "com.uy", "com.py",
+        "com.bo", "com.ec", "com.gt", "com.hn", "com.ni", "com.pa",
+        "com.py", "com.sv", "com.ve", "co.in", "co.ls", "co.ma",
+        "co.mu", "co.ke", "co.cr", "co.id", "co.il", "co.zm",
+        "com.af", "com.ag", "com.ai", "com.bn", "com.bz", "com.cn",
+        "com.do", "com.dm", "com.eg", "com.et", "com.fj", "com.gh",
+        "com.gi", "com.gt", "com.gu", "com.iq", "com.jm", "com.kh",
+        "com.kw", "com.lb", "com.ly", "com.mm", "com.mt", "com.mx",
+        "com.my", "com.na", "com.ng", "com.nf", "com.om", "com.pg",
+        "com.ph", "com.pk", "com.pr", "com.py", "com.qa", "com.sa",
+        "com.sb", "com.sg", "com.sl", "com.sv", "com.tj", "com.tt",
+        "com.tw", "com.ua", "com.uy", "com.vc", "com.ve", "com.vn"
+    ],
+    "suspiciousTlds": [
+        ".tk", ".ml", ".ga", ".cf", ".bit"
+    ],
+    "homoglyphs": [
+        { "char": "а", "replacement": "a" },
+        { "char": "о", "replacement": "o" },
+        { "char": "е", "replacement": "e" },
+        { "char": "р", "replacement": "p" },
+        { "char": "с", "replacement": "c" },
+        { "char": "х", "replacement": "x" }
+    ],
+    "digitSubstitutions": [
+        { "char": "0", "replacement": "o" },
+        { "char": "1", "replacement": "l" },
+        { "char": "3", "replacement": "e" },
+        { "char": "5", "replacement": "s" },
+        { "char": "8", "replacement": "b" }
+    ],
+    "maxImpersonationScore": 10,
+    "bankBrands": [
+        "paypal", "hangseng", "hsbc", "bochk", "bankofchina", "standardchartered",
+        "dbs", "ocbc", "citicbank", "winglung", "chbank", "hkbea", "bankcomm"
+    ],
+    "riskScoreMultipliers": {
+        "urlIssue": 3,
+        "uncertainDomainAge": 5,
+        "newDomainAge": 10,
+        "invalidSSL": 15,
+        "contentAnalysisUnavailable": 10,
+        "fraudIndicator": 2,
+        "threatFeedUnavailable": 5,
+        "blacklisted": 50,
+        "phishingIndicator": 5,
+        "bankBrandImpersonation": 10,
+        "otherBrandImpersonation": 5
+    },
+    "thresholds": {
+        "domainAgeIsNewDays": 365,
+        "excessiveSubdomains": 2,
+        "unusualDotCount": 4,
+        "unusualDashCount": 4,
+        "excessiveHyphens": 2,
+        "popularityRankTopMillion": 1000000,
+        "popularityReductionPoints": 20
+    },
+    "commonSubdomains": [
+        "www", "mail", "ftp", "blog", "shop", "api", "dev", "test", "docs", "support", "admin", "secure"
+    ]
+}

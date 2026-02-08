@@ -61,9 +61,9 @@ describe('WebsiteFraudChecker', () => {
     });
 
     test('should properly initialize with suspicious patterns', () => {
-        expect(checker.suspiciousPatterns).toBeDefined();
-        expect(Array.isArray(checker.suspiciousPatterns)).toBe(true);
-        expect(checker.suspiciousPatterns.length).toBeGreaterThan(0);
+        expect(checker.config.suspiciousPatterns).toBeDefined();
+        expect(Array.isArray(checker.config.suspiciousPatterns)).toBe(true);
+        expect(checker.config.suspiciousPatterns.length).toBeGreaterThan(0);
     });
 
     test('should properly initialize with legitimate domains', () => {

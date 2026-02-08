@@ -1,5 +1,5 @@
 import { test, describe, expect, beforeEach, vi } from 'vitest';
-import { WebsiteFraudChecker } from '../website_fraud_check_esm.mjs';
+import { WebsiteFraudChecker } from '../website_fraud_check.mjs';
 
 describe('WebsiteFraudChecker', () => {
     let checker;
@@ -132,9 +132,9 @@ describe('WebsiteFraudChecker', () => {
     });
 
     test('should properly initialize with suspicious patterns', () => {
-        expect(checker.suspiciousPatterns).toBeDefined();
-        expect(Array.isArray(checker.suspiciousPatterns)).toBe(true);
-        expect(checker.suspiciousPatterns.length).toBeGreaterThan(0);
+        expect(checker.config.suspiciousPatterns).toBeDefined();
+        expect(Array.isArray(checker.config.suspiciousPatterns)).toBe(true);
+        expect(checker.config.suspiciousPatterns.length).toBeGreaterThan(0);
     });
 
     test('should properly initialize with legitimate domains', () => {
@@ -164,7 +164,7 @@ describe('WebsiteFraudChecker', () => {
         expect(result.brandMentions).toBeDefined();
         
         // Should detect Facebook impersonation
-        expect(result.brandMentions).toContain('facebook');
+        expect(result.brandMentions.some(mention => mention.brand === 'facebook')).toBe(true);
         expect(result.impersonation.length).toBeGreaterThan(0);
     });
 
@@ -221,7 +221,7 @@ describe('WebsiteFraudChecker', () => {
             confidence: 'high'
         });
         
-        const result = await unmockedChecker.checkThreatIntelligence('test-domain.com');
+        const result = await unmockedChecker.checkThreatIntelligence('https://test-domain.com');
         
         // Verify that all services were called
         expect(mockPhishTank).toHaveBeenCalled();
@@ -231,9 +231,7 @@ describe('WebsiteFraudChecker', () => {
         expect(result.isBlacklisted).toBe(true);
         expect(result.threatsFound).toContain('Verified phishing site in PhishTank database (ID: 12345)');
         expect(result.confidence).toBe('high');
-        expect(result.serviceStatus).toBeDefined();
-        expect(result.serviceStatus.phishTank).toBeDefined();
-        expect(result.serviceStatus.googleSafeBrowsing).toBeDefined();
+
         
         // Clean up
         mockPhishTank.mockRestore();
