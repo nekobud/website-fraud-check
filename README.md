@@ -7,9 +7,9 @@ A skill for detecting potentially fraudulent websites by analyzing various indic
 - 🛡️ Threat intelligence feed checking
 - 📄 Static and dynamic content analysis
 - 🎭 Brand impersonation detection
+- 📅 Domain age verification
 - 🔍 URL pattern analysis for suspicious elements
 - 🔒 SSL certificate validation
-- 📅 Domain age verification
 - 📊 Risk scoring and assessment
 
 ## Prerequisites
