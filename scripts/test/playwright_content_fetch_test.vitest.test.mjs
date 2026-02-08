@@ -1,5 +1,5 @@
 import { test, describe, expect, beforeEach, vi } from 'vitest';
-import { WebsiteFraudChecker } from '../website_fraud_check_esm.mjs';
+import { WebsiteFraudChecker } from '../website_fraud_check.mjs';
 
 describe('WebsiteFraudChecker - Playwright Content Fetching', () => {
     let checker;
