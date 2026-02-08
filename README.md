@@ -17,7 +17,6 @@ A skill for detecting potentially fraudulent websites by analyzing various indic
 ### Basic Requirements
 - Node.js
 - Internet connectivity
-- whois (install with: `sudo apt install whois` or `brew install whois`)
 
 ### Enhanced Detection (Optional but Recommended)
 For improved detection of dynamically-rendered websites (those that update HTML DOM after page load), install Playwright:
@@ -73,7 +72,7 @@ node scripts/website_fraud_check.mjs https://example.com
 The system evaluates websites based on multiple factors:
 
 1. **URL Analysis**: Checks for suspicious patterns and structures
-2. **Domain Age**: New domains (less than 1 year) receive higher risk scores
+2. **Domain Age**: Uses the `whoiser` Node.js library to check domain registration age; new domains (less than 1 year) receive higher risk scores.
 3. **SSL Verification**: Ensures secure connections
 4. **Content Analysis**: Scans for brand impersonation and suspicious elements
    - **Static Content**: Direct HTML parsing for standard websites
@@ -127,34 +126,19 @@ The skill can detect:
 - Suspicious URL structures
 - Known phishing sites from threat intelligence feeds (with API integration)
 
+## Configuration
+
+All configurable constants and thresholds for the fraud checking logic are centralized in `config/fraud-data.json`. This includes:
+- Suspicious URL patterns
+- Target brand names for impersonation detection
+- Specific fraud indicators
+- Lists of multi-part TLDs and suspicious TLDs
+- Homoglyph and digit substitution definitions
+- Risk score multipliers and age thresholds
+
 ## Threat Intelligence Integration
 
-The skill integrates with multiple threat intelligence services:
-
-- **PhishTank API**: Checks against known phishing sites (no API key required for basic lookups)
-- **Google Safe Browsing API**: Checks against Google's list of unsafe websites (requires API key)
-
-### Service Status Reporting
-
-When running the tool, you'll see a status report showing which threat intelligence services are active:
-
-```
-Threat Intelligence Service Status:
-  PhishTank: Active - Basic lookups available without API key
-  Google Safe Browsing: Inactive - Missing GOOGLE_SAFE_BROWSING_API_KEY environment variable
-```
-
-### Setup for Enhanced APIs
-
-To enable Google Safe Browsing API:
-1. Register for an API key at https://developers.google.com/safe-browsing/
-2. Set the environment variable: `GOOGLE_SAFE_BROWSING_API_KEY=your_api_key_here`
-
-### PhishTank Integration
-
-The system uses HTTP POST requests to check URLs against the PhishTank database:
-1. Register for an API key at https://www.phishtank.com/api_info.php (optional but recommended)
-2. The API call could fail when Cloudflare trying to perform human verification
+The skill integrates with threat intelligence services (PhishTank, Google Safe Browsing) to identify known malicious sites. API keys for enhanced services (e.g., Google Safe Browsing) should be configured as environment variables.
 
 ## Limitations
 
